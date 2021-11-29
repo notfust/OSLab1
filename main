@@ -484,6 +484,7 @@ int main() {
             case 7: {
                 cout << "Enter Readable File Name (for example: c:\\1.txt): ";
                 string DiskName;
+                long long FileSize;
                 cin >> DiskName;
                 HANDLE Read, Write;
                 Read = CreateFile(
@@ -496,71 +497,75 @@ int main() {
                         nullptr);
                 if (Read == INVALID_HANDLE_VALUE)
                     cout << "Error" << endl;
-                cout << "Enter Writeable File Name (for example: c:\\1.txt): ";
-                cin >> DiskName;
-                Write = CreateFile(
-                        DiskName.c_str(),
-                        GENERIC_READ | GENERIC_WRITE,
-                        0,
-                        nullptr,
-                        CREATE_ALWAYS, //Всегда открывает файл.
-                        FILE_FLAG_OVERLAPPED | FILE_FLAG_NO_BUFFERING,
-                        nullptr);
-                if (Write == INVALID_HANDLE_VALUE)
-                    cout << "Error" << endl;
-                cout << "Enter Byte Count: ";
-                int ByteCount;
-                cin >> ByteCount;
-                cout << "Enter operation count: ";
-                int OperationCount;
-                cin >> OperationCount;
-                long long  FileSize = GetFileSize(Read,nullptr);
-                OVERLAPPED *ReadOver;
-                char** BuffOver = new char*[OperationCount]();
-                ReadOver = new OVERLAPPED[OperationCount]();
-                OVERLAPPED over{0};
-                for(int i = 0; i < OperationCount; i++) {
-                    ReadOver[i] = over;
-                    over.Offset += ByteCount;
-                    BuffOver[i] = new char[ByteCount]();
+                else {
+                    cout << "Enter Writeable File Name (for example: c:\\1.txt): ";
+                    cin >> DiskName;
+                    Write = CreateFile(
+                            DiskName.c_str(),
+                            GENERIC_READ | GENERIC_WRITE,
+                            0,
+                            nullptr,
+                            CREATE_ALWAYS, //Всегда открывает файл.
+                            FILE_FLAG_OVERLAPPED | FILE_FLAG_NO_BUFFERING,
+                            nullptr);
+                    if (Write == INVALID_HANDLE_VALUE)
+                        cout << "Error" << endl;
+                    else {
+                        cout << "Enter Byte Count: ";
+                        int ByteCount;
+                        cin >> ByteCount;
+                        cout << "Enter Operation Count: ";
+                        int OperationCount;
+                        cin >> OperationCount;
+                        FileSize = GetFileSize(Read, nullptr);
+                        OVERLAPPED *ReadOver;
+                        char **BuffOver = new char *[OperationCount]();
+                        ReadOver = new OVERLAPPED[OperationCount]();
+                        OVERLAPPED over{0};
+                        for (int i = 0; i < OperationCount; i++) {
+                            ReadOver[i] = over;
+                            over.Offset += ByteCount;
+                            BuffOver[i] = new char[ByteCount]();
+                        }
+                        auto begin = chrono::system_clock::now();
+                        for (; FileSize > 0;) {
+                            call = 0;
+                            for (int i = 0; i < OperationCount; i++)
+                                ReadFileEx(
+                                        Read,
+                                        BuffOver[i],
+                                        ByteCount,
+                                        &ReadOver[i],
+                                        FileIOCompletionRoutine);
+                            for (; call < OperationCount;)
+                                SleepEx(INFINITE, true);
+                            call = 0;
+                            for (int i = 0; i < OperationCount; i++)
+                                WriteFileEx(
+                                        Write,
+                                        BuffOver[i],
+                                        ByteCount,
+                                        &ReadOver[i],
+                                        FileIOCompletionRoutine);
+                            for (; call < OperationCount;)
+                                SleepEx(INFINITE, true);
+                            for (int i = 0; i < OperationCount; i++)
+                                ReadOver[i].Offset += OperationCount * ByteCount;
+                            FileSize -= OperationCount * ByteCount;
+                            auto end = chrono::system_clock::now();
+                            cout << "Time - " <<  chrono::duration_cast<chrono::milliseconds>(end - begin).count() << endl;
+                            FileSize = GetFileSize(Read, nullptr);
+                            SetFilePointer(Write, FileSize, nullptr, FILE_BEGIN);
+                            SetEndOfFile(Write);
+                            delete [] ReadOver;
+                            for(int i = 0; i < OperationCount; i++)
+                                delete [] BuffOver[i];
+                            delete [] BuffOver;
+                        }
+                    }
+                    CloseHandle(Write);
                 }
-                auto begin = chrono::system_clock::now();
-                for(; FileSize > 0;) {
-                    call = 0;
-                    for(int i = 0;i < OperationCount;i++)
-                        ReadFileEx(
-                                Read,
-                                BuffOver[i],
-                                ByteCount,
-                                &ReadOver[i],
-                                FileIOCompletionRoutine);
-                    for(;call < OperationCount;)
-                        SleepEx(INFINITE, true);
-                    call = 0;
-                    for(int i = 0; i < OperationCount; i++)
-                        WriteFileEx(
-                                Write,
-                                BuffOver[i],
-                                ByteCount,
-                                &ReadOver[i],
-                                FileIOCompletionRoutine);
-                    for(; call < OperationCount;)
-                        SleepEx(INFINITE, true);
-                    for(int i = 0 ; i < OperationCount; i++)
-                        ReadOver[i].Offset += OperationCount*ByteCount;
-                    FileSize -= OperationCount*ByteCount;
-                }
-                auto end = chrono::system_clock::now();
-                cout << "Time - " <<  chrono::duration_cast<chrono::milliseconds>(end - begin).count() << endl;
-                FileSize = GetFileSize(Read, nullptr);
-                SetFilePointer(Write, FileSize, nullptr, FILE_BEGIN);
-                SetEndOfFile(Write);
                 CloseHandle(Read);
-                CloseHandle(Write);
-                delete [] ReadOver;
-                for(int i = 0; i < OperationCount; i++)
-                    delete [] BuffOver[i];
-                delete [] BuffOver;
                 system("pause");
             } break;
             default:
